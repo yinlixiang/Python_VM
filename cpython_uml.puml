@@ -1,0 +1,299 @@
+@startuml
+class pythonrun {
+    Python/pythonrun.c
+    ==
+    + PyRun_FileExFlags()
+    + PyParser_ASTFromFileObject(FILE)
+    - run_mod()
+    - run_eval_code_obj()
+    ==
+    PyArena_New()
+    PyParser_ParseFileObject(FILE): node
+    parsetok.PyAST_FromNodeObject(node): mod_ty
+    PyAST_CompileObject()
+    PyEval_EvalCode()
+    PyArena_Free()
+}
+
+pythonrun --> pyarena
+pythonrun --> parsetok
+pythonrun --> ast
+pythonrun --> compiler
+
+class pyarena {
+    Python/pyarena.c
+    ==
+    + PyArena
+    + PyArena_New()
+    + PyArena_Free()
+}
+
+class parsetok {
+    Include/parsetok.h
+    Parser/parsetok.c
+    ==
+    + PyParser_ParseFileObject(FILE): node
+    - parsetok(tokenizer, grammar): node
+    ==
+    tokenizer.PyTokenizer_FromFile(): tokenizer
+    while tok = tokenizer.PyTokenizer_Get():
+        PyParser_AddToken(tok): node
+}
+
+parsetok --> tokenizer
+parsetok --> parser
+
+class parser {
+    Parser/parser.h
+    Parser/parser.c
+    ==
+    - grammar *p_grammar
+    - node *p_tree: Top of parse tree
+    - stack p_stack: Stack of parser states
+    + PyParser_New(grammar, node): node not in
+    + PyParser_AddToken(token)
+    + PyGrammar_AddAccelerators(grammar)
+    + PyParser_Delete()
+}
+
+parser --> grammar
+parser --> node
+
+class tokenizer {
+    Include/tokenizer.h
+    Parser/tokenizer.c
+    ==
+    - FILE *fp
+    - char *cur
+    + PyTokenizer_FromFile()
+    + PyTokenizer_Get()
+    + PyTokenizer_Free()
+}
+
+tokenizer --> token
+
+class token {
+    Grammar/Tokens
+    Include/token.h
+    Parser/token.c
+    ==
+    + ISTERMINAL()
+    + ISNONTERMINAL()
+    + ISEOF()
+    + PyToken_OneChar()
+    + PyToken_TwoChars()
+    + PyToken_ThreeChars()
+}
+
+class node {
+    Include/node.h
+    Parser/node.c
+    ==
+    + PyNode_New()
+    + PyNode_AddChild()
+    + PyNode_Free()
+    + NCH(node)
+    + CHILD(node, int)
+    + RCHILD(node, int)
+    + TYPE(node)
+    + STR()
+    + LINENO()
+    + REQ()
+}
+
+class grammar {
+    Grammar/Grammar
+    Include/graminit.h
+    Python/graminit.c
+    Include/grammer.h
+    Parser/grammer1.c
+    ==
+    - dfa   *g_dfa
+    - labellist g_ll
+    + PyGrammar_FindDFA(grammar, int)
+    + PyGrammar_LabelRepr(label)   
+}
+
+grammar o-- dfa
+grammar o-- label
+
+class dfa {
+
+}
+
+class label {
+
+}
+
+class ast {
+    Include/ast.h
+    Python/ast.c
+    ==
+    + PyAST_FromNode(node): mod_ty
+    + ast_for_expr(node): expr_ty
+    + ast_for_call(node, expr_ty, node, node): expr_ty
+    + ast_for_stmt(node): stmt_ty
+    + ast_for_with_stmt(node, bool): stmt_ty
+    + ast_for_for_stmt(node, bool): stmt_ty
+}
+
+ast --> mod_ty
+mod_ty o-- stmt_ty
+mod_ty o-- expr_ty
+stmt_ty o-- expr_ty
+expr_ty o-- expr_ty
+ast --> asdl_seq
+
+
+class mod_ty {
+    Include/Python-ast.h
+    ==
+    asdl_seq *
+    expr_ty
+}
+
+class expr_ty {
+    Include/Python-ast.h
+    ==
+    asdl_seq *
+    expr_ty
+    operator_ty
+}
+
+class stmt_ty {
+    Include/Python-ast.h
+    ==
+    expr_ty
+    asdl_seq *
+    expr_context_ty
+}
+
+class asdl_seq {
+    Include/asdl.h
+    Python/asdl.c
+    ==
+    Py_ssize_t size
+    void *elements[1]
+    + _Py_asdl_seq_new(size, PyArena): asdl_seq
+    + asdl_seq_GET(S, I): (S)->elements[(I)]
+    + asdl_seq_LEN(S)
+    + asdl_seq_SET(S, I, V): (S)->elements[I] = (V)
+}
+
+class compiler {
+    Include/compile.h
+    Python/compile.c
+    ==
+    PyCodeObject *co
+    symtable *c_st
+    PyObject *c_const_cache: all constants
+    compiler_unit *u: current block
+    PyObject *c_stack: compiler_unit ptrs
+    + PyNode_Compile(node): PyCodeObject *
+    + PyAST_Compile(mod_ty): PyCodeObject *
+    - compiler_init()
+    - compiler_new_block(): basicblock *
+    - compiler_mod(mod_ty): PyCodeObject *
+    - VISIT(xxx_ty)
+    - assemble(): PyCodeObject *
+    ==
+    compiler_init()
+    PyFuture_FromASTObject()
+    symtable.PySymtable_BuildObject(mod_ty): symtable *c_st
+    compiler_mod(mod_ty)
+    assemble()
+
+}
+
+compiler --> symtable
+compiler --> compiler_unit
+compiler --> assembler
+
+class symtable {
+    Include/symtable.h
+    Python/symtable.c
+    ==
+    PySTEntryObject *st_cur: current symbol table entry
+    PySTEntryObject *st_top: symbol table entry for module
+    PyObject *st_blocks: map AST node addresses to symbol table entries
+    + PySymtable_Build(mod_ty)
+    + PySymtable_Free()
+    + PySymtable_Lookup(key): PySTEntryObject *
+}
+
+symtable o-- PySTEntryObject
+
+class PySTEntryObject {
+    ==
+    symtable *ste_table
+    + PyST_GetScope(PyObject *name)
+}
+
+class compiler_unit {
+    PyCodeObject + basicblock + fblockinfo
+    ==
+    + compiler_new_block()
+    + compiler_next_block()
+    + compiler_use_next_block(basicblock)
+    + compiler_next_instr(basicblock)
+    + compiler_push_fblock()
+    + compiler_pop_fblock()
+    + compiler_unwind_fblock()
+}
+
+compiler_unit o-- basicblock
+compiler_unit o-- fblockinfo
+basicblock o-- instr
+basicblock o-- basicblock
+fblockinfo o-- basicblock
+
+class basicblock {
+    ==
+    basicblock *b_list: points to the next block in reverse order
+    basicblock *b_next: pointer to the next block reached by normal control flow
+    instr *b_instr: pointer to an array of instructions
+}
+
+class fblockinfo {
+    A frame block is used to handle loops
+    ==
+    basicblock *fb_block
+}
+
+class instr {
+    ==
+    basicblock *i_target 
+}
+
+
+class assembler {
+    depth-first search of basic block graph
+    ==
+    PyObject *a_bytecode
+    int a_offset
+    basicblock **a_postorder
+    PyObject *a_lnotab
+    PyCodeObject *co
+    + assemble(compiler): PyCodeObject *co
+    - dfs()
+    - assemble_jump_offsets()
+    - assemble_emit(instr)
+    - makecode(compiler): PyCodeObject *
+}
+
+assembler --> PyCodeObject
+
+class PyCodeObject {
+    Include/code.h
+    ==
+    PyObject *co_code;          /* instruction opcodes */
+    PyObject *co_consts;        /* list (constants used) */
+    PyObject *co_names;         /* list of strings (names used) */
+    PyObject *co_varnames;      /* tuple of strings (local variable names) */
+    PyObject *co_freevars;      /* tuple of strings (free variable names) */
+    PyObject *co_cellvars;      /* tuple of strings (cell variable names) */
+    + PyCode_New()
+    + PyCode_Addr2Line(PyCodeObject *, int): line number
+}
+
+@enduml
